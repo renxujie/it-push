@@ -25,7 +25,7 @@ class JuchaoCrawler:
             },
             {
                 "name": "路透中文网",
-                "url": "https://cn.reuters.com/", 
+                "url": "https://www.reuters.com/zh/", 
                 "type": "html",
                 "selector": ".news-headline-list li"
             },
