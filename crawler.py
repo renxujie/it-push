@@ -1,134 +1,130 @@
-import requests
 import pandas as pd
 from datetime import datetime, timedelta
 import time
 import random
-from fake_useragent import UserAgent
-import gzip
-from io import BytesIO
+from playwright.sync_api import sync_playwright
 import json
 
 class JuchaoCrawler:
     def __init__(self):
         self.base_url = "https://www.cninfo.com.cn/new/hisAnnouncement/query" 
-        self.ua = UserAgent()
-        self.session = requests.Session()
-        self._setup_session()
+        self.browser = None
+        self.context = None
+        self.page = None
     
-    def _setup_session(self):
-        """配置会话，模拟真实浏览器"""
-        self.session.headers.update({
-            "Accept": "*/*",
-            "Accept-Encoding": "gzip, deflate, br, zstd",
-            "Accept-Language": "zh-CN,zh;q=0.9",
-            "Connection": "keep-alive",
-            "Host": "www.cninfo.com.cn",
-            "Origin": "https://www.cninfo.com.cn", 
-            "Referer": "https://www.cninfo.com.cn/new/commonUrl/pageOfSearch?url=disclosure/list/search", 
-            "User-Agent": self.ua.random,
-            "X-Requested-With": "XMLHttpRequest"
-        })
-        # 添加Cookie获取逻辑
-        self._get_initial_cookies()
+    def _setup_browser(self):
+        """启动浏览器并配置上下文"""
+        playwright = sync_playwright().start()
+        
+        # 配置浏览器启动参数
+        self.browser = playwright.chromium.launch(
+            headless=True,  # GitHub Actions中必须设置为True
+            args=[
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--no-zygote",
+                "--single-process",
+                "--disable-web-security",
+                "--disable-features=VizDisplayCompositor"
+            ]
+        )
+        
+        # 创建浏览器上下文
+        self.context = self.browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+            viewport={"width": 1920, "height": 1080},
+            locale="zh-CN",
+            timezone_id="Asia/Shanghai"
+        )
+        
+        # 创建新页面
+        self.page = self.context.new_page()
+        
+        # 添加请求拦截，监控网络请求
+        self.page.route("**/query", lambda route: route.continue_())
+        
+        return playwright
     
-    def _get_initial_cookies(self):
-        """获取初始Cookies"""
-        try:
-            # 先访问首页获取Cookies
-            self.session.get("https://www.cninfo.com.cn/new/index",  timeout=10)
-            # 再访问搜索页面
-            self.session.get("https://www.cninfo.com.cn/new/commonUrl/pageOfSearch?url=disclosure/list/search",  timeout=10)
-        except Exception as e:
-            print(f"获取初始Cookies失败: {str(e)}")
-    
-    def _decode_response(self, response):
-        """解码服务器返回的可能压缩的内容"""
-        try:
-            if response.headers.get('Content-Encoding') == 'gzip':
-                buf = BytesIO(response.content)
-                with gzip.GzipFile(fileobj=buf) as f:
-                    return f.read().decode('utf-8')
-            else:
-                return response.text
-        except Exception as e:
-            print(f"解码响应失败: {str(e)}")
-            return response.text
+    def _get_announcements_data(self, today):
+        """通过浏览器网络请求获取公告数据"""
+        # 先访问搜索页面初始化会话
+        self.page.goto(
+            "https://www.cninfo.com.cn/new/commonUrl/pageOfSearch?url=disclosure/list/search", 
+            wait_until="networkidle",
+            timeout=30000
+        )
+        
+        # 等待页面加载完成
+        self.page.wait_for_selector(".search-input", timeout=20000)
+        
+        # 构造请求参数
+        payload = {
+            "pageNum": "1",
+            "pageSize": "100",  # 每页最多100条
+            "column": "szse",
+            "tabName": "fulltext",
+            "plate": "",
+            "stock": "",
+            "searchkey": "",
+            "secid": "",
+            "category": "",
+            "trade": "",
+            "seDate": f"{today}~{today}",
+            "sortName": "",
+            "sortType": "",
+            "isHLtitle": "true"
+        }
+        
+        # 发送请求获取数据
+        response = self.page.evaluate("""async (url, payload) => {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: new URLSearchParams(payload)
+            });
+            return await response.json();
+        }""", self.base_url, payload)
+        
+        return response
     
     def get_today_announcements(self):
         """获取今日发布的所有公告"""
         today = datetime.now().strftime("%Y-%m-%d")
-        start_date = today
-        end_date = today
         
-        all_announcements = []
-        page_num = 1
-        page_size = 30
-        
-        while True:
-            # 每次请求更新User-Agent
-            self.session.headers['User-Agent'] = self.ua.random
+        playwright = None
+        try:
+            # 启动浏览器
+            playwright = self._setup_browser()
             
-            payload = {
-                "pageNum": str(page_num),
-                "pageSize": str(page_size),
-                "column": "szse",
-                "tabName": "fulltext",
-                "plate": "",
-                "stock": "",
-                "searchkey": "",
-                "secid": "",
-                "category": "",
-                "trade": "",
-                "seDate": f"{start_date}~{end_date}",
-                "sortName": "",
-                "sortType": "",
-                "isHLtitle": "true"
-            }
+            # 获取公告数据
+            data = self._get_announcements_data(today)
             
-            try:
-                response = self.session.post(
-                    self.base_url, 
-                    data=payload, 
-                    timeout=20
-                )
-                response.raise_for_status()
-                
-                # 解码响应内容
-                content = self._decode_response(response)
-                
-                # 尝试解析JSON
-                try:
-                    data = json.loads(content)
-                except json.JSONDecodeError:
-                    print(f"第{page_num}页JSON解析失败，响应内容开头: {content[:100]}...")
-                    
-                    # 尝试重新获取Cookies并重试
-                    self._get_initial_cookies()
-                    time.sleep(random.uniform(10, 20))
-                    continue
-                
-                if data.get("totalAnnouncement", 0) == 0:
-                    break
-                
-                announcements = data.get("announcements", [])
-                if not announcements:
-                    break
-                
-                all_announcements.extend(self._parse_announcements(announcements))
-                
-                # 检查是否还有下一页
-                if page_num * page_size >= data.get("totalAnnouncement", 0):
-                    break
-                
-                page_num += 1
-                time.sleep(random.uniform(3, 6))  # 进一步延长随机延迟
+            if data.get("totalAnnouncement", 0) == 0:
+                return pd.DataFrame()
             
-            except Exception as e:
-                print(f"爬取第{page_num}页失败: {str(e)}")
-                time.sleep(random.uniform(15, 30))  # 遇到错误时等待更长时间
-                continue
-        
-        return pd.DataFrame(all_announcements)
+            announcements = data.get("announcements", [])
+            if not announcements:
+                return pd.DataFrame()
+            
+            # 解析公告数据
+            parsed_data = self._parse_announcements(announcements)
+            
+            return pd.DataFrame(parsed_data)
+            
+        except Exception as e:
+            print(f"爬取失败: {str(e)}")
+            return pd.DataFrame()
+        finally:
+            # 关闭浏览器
+            if self.browser:
+                self.browser.close()
+            if playwright:
+                playwright.stop()
     
     def _parse_announcements(self, announcements):
         """解析公告数据"""
