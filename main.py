@@ -150,6 +150,9 @@ def generate_focus_company_news(focus_company_news):
     
     news_html = ""
     for company, news_list in focus_company_news.items():
+        if not news_list:
+            continue
+        
         news_html += f"""
         <div class="company-news">
             <div class="company-title">🔍 {company} 相关新闻</div>
@@ -173,7 +176,7 @@ def generate_focus_company_news(focus_company_news):
             """
         news_html += "</ul></div>"
     
-    return news_html
+    return news_html if news_html else "<p>今日无重点公司相关新闻</p>"
 
 def generate_a股_events_list(a股_events):
     """生成A股重要事件列表"""
