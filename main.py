@@ -99,6 +99,10 @@ def generate_email_content(announcements, global_events, a股_events):
 
 def generate_focus_announcements(announcements):
     """生成重点关注公告列表"""
+    # 检查announcements是否为空
+    if announcements.empty:
+        return "<p>今日无公告</p>"
+    
     focus_announcements = announcements[announcements['公告类型'].str.contains("重点关注")]
     
     if focus_announcements.empty:
