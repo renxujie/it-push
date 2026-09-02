@@ -3,11 +3,18 @@ import pandas as pd
 from datetime import datetime, timedelta
 import time
 import random
+from fake_useragent import UserAgent
 
 class JuchaoCrawler:
     def __init__(self):
         self.base_url = "https://www.cninfo.com.cn/new/hisAnnouncement/query" 
-        self.headers = {
+        self.ua = UserAgent()
+        self.headers = self._generate_headers()
+        self.session = requests.Session()
+    
+    def _generate_headers(self):
+        """生成随机请求头，避免被识别为爬虫"""
+        return {
             "Accept": "*/*",
             "Accept-Encoding": "gzip, deflate, br, zstd",
             "Accept-Language": "zh-CN,zh;q=0.9",
@@ -16,9 +23,18 @@ class JuchaoCrawler:
             "Host": "www.cninfo.com.cn",
             "Origin": "https://www.cninfo.com.cn", 
             "Referer": "https://www.cninfo.com.cn/new/commonUrl/pageOfSearch?url=disclosure/list/search", 
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
+            "User-Agent": self.ua.random,
             "X-Requested-With": "XMLHttpRequest"
         }
+    
+    def _get_cookies(self):
+        """获取网站Cookies，模拟真实浏览器访问"""
+        try:
+            self.session.get("https://www.cninfo.com.cn/new/index",  headers=self.headers)
+            return self.session.cookies
+        except Exception as e:
+            print(f"获取Cookies失败: {str(e)}")
+            return None
     
     def get_today_announcements(self):
         """获取今日发布的所有公告"""
@@ -30,7 +46,13 @@ class JuchaoCrawler:
         page_num = 1
         page_size = 30
         
+        # 先获取Cookies
+        self._get_cookies()
+        
         while True:
+            # 每次请求更新User-Agent
+            self.headers["User-Agent"] = self.ua.random
+            
             payload = {
                 "pageNum": str(page_num),
                 "pageSize": str(page_size),
@@ -49,9 +71,26 @@ class JuchaoCrawler:
             }
             
             try:
-                response = requests.post(self.base_url, data=payload, headers=self.headers)
+                # 使用session保持连接
+                response = self.session.post(
+                    self.base_url, 
+                    data=payload, 
+                    headers=self.headers,
+                    timeout=15
+                )
                 response.raise_for_status()
-                data = response.json()
+                
+                # 尝试解析JSON
+                try:
+                    data = response.json()
+                except Exception as e:
+                    print(f"解析JSON失败，可能被反爬机制拦截: {str(e)}")
+                    print(f"响应内容: {response.text[:200]}...")
+                    
+                    # 尝试重新获取Cookies并重试
+                    self._get_cookies()
+                    time.sleep(random.uniform(5, 10))
+                    continue
                 
                 if data["totalAnnouncement"] == 0:
                     break
@@ -67,11 +106,13 @@ class JuchaoCrawler:
                     break
                 
                 page_num += 1
-                time.sleep(random.uniform(1, 3))  # 随机延迟，避免被封
+                time.sleep(random.uniform(2, 5))  # 延长随机延迟时间
             
             except Exception as e:
                 print(f"爬取第{page_num}页失败: {str(e)}")
-                break
+                # 遇到错误时等待更长时间并重试
+                time.sleep(random.uniform(10, 20))
+                continue
         
         return pd.DataFrame(all_announcements)
     
