@@ -6,8 +6,7 @@ import os
 
 def main():
     # 配置信息
-    KEY_COMPANIES = ["麒信安", "宇信科技"]
-    
+    KEY_COMPANIES = ["麒麟信安", "宇信科技", "宏明电子"]    
     # 初始化组件
     crawler = JuchaoCrawler()
     email_sender = EmailSender()
