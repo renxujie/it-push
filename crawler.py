@@ -16,34 +16,34 @@ class JuchaoCrawler:
         self.page = None
         
         # 重点关注公司列表
-        self.focus_companies = ['麒信安', '宇信科技', '拓维信息', '卧龙电驱', '三花智控']
+        self.focus_companies = ['麒信信安', '宇信科技', '拓维信息', '卧龙电驱', '三花智控']
         
-        # 全球大事件数据源配置，更换为更稳定的网站
+        # 全球大事件数据源配置，使用最稳定的来源
         self.global_news_sources = [
             {
-                "name": "新浪财经",
-                "url": "https://finance.sina.com.cn/world.html", 
-                "selector": ".list-item",
-                "title_selector": "h2",
+                "name": "BBC中文网",
+                "url": "https://www.bbc.com/zhongwen/simp", 
+                "selector": ".bbc-news-item",
+                "title_selector": "h3",
                 "time_selector": ".time"
             },
             {
-                "name": "凤凰财经",
-                "url": "https://finance.ifeng.com/list/145,0,0,0,1,0.html", 
+                "name": "路透中文网",
+                "url": "https://cn.reuters.com/", 
                 "selector": ".news-item",
                 "title_selector": "h3",
                 "time_selector": ".time"
             },
             {
-                "name": "中国经济网",
-                "url": "https://world.ce.cn/", 
+                "name": "法新社中文网",
+                "url": "https://www.reutersagency.com/", 
                 "selector": ".news-item",
                 "title_selector": "h3",
                 "time_selector": ".time"
             },
             {
-                "name": "环球财经网",
-                "url": "https://www.hqcj.com/", 
+                "name": "华尔街见闻",
+                "url": "https://wallstreetcn.com/", 
                 "selector": ".news-item",
                 "title_selector": "h3",
                 "time_selector": ".time"
@@ -56,7 +56,7 @@ class JuchaoCrawler:
                 "name": "新浪财经",
                 "url": "https://finance.sina.com.cn/stock/", 
                 "search_url": "https://search.sina.com.cn/?q={}&c=news&range=all", 
-                "selector": ".news-item",
+                "selector": ".news-list-item",
                 "title_selector": "h2",
                 "time_selector": ".time"
             },
@@ -69,18 +69,18 @@ class JuchaoCrawler:
                 "time_selector": ".time"
             },
             {
-                "name": "同花顺财经",
-                "url": "http://www.10jqka.com.cn/", 
-                "search_url": "http://so.10jqka.com.cn/s?wd={}",
-                "selector": ".news-item",
+                "name": "雪球",
+                "url": "https://xueqiu.com/", 
+                "search_url": "https://xueqiu.com/s?q={}", 
+                "selector": ".item",
                 "title_selector": "h3",
                 "time_selector": ".time"
             },
             {
-                "name": "雪球",
-                "url": "https://xueqiu.com/", 
-                "search_url": "https://xueqiu.com/search?q={}&type=all", 
-                "selector": ".item",
+                "name": "财联社",
+                "url": "https://www.cls.cn/", 
+                "search_url": "https://www.cls.cn/search?keyword={}", 
+                "selector": ".news-item",
                 "title_selector": "h3",
                 "time_selector": ".time"
             }
@@ -554,7 +554,7 @@ class JuchaoCrawler:
         return unique_news
     
     def get_global_events(self):
-        """优化全球大事件抓取，更换更稳定的数据源"""
+        """优化全球大事件抓取，使用最稳定的国际数据源"""
         global_events = []
         
         # 使用requests+BeautifulSoup抓取数据
