@@ -38,7 +38,7 @@ def send_email(subject, content):
         print(f"邮件发送失败: {str(e)}")
         print(f"错误类型: {type(e).__name__}")
 
-def generate_email_content(announcements, global_events, a股_events):
+def generate_email_content(announcements, global_events, a股_events, announcement_summary, a股_related_news):
     """生成优化后的邮件内容"""
     today = datetime.now().strftime("%Y-%m-%d")
     
@@ -61,11 +61,27 @@ def generate_email_content(announcements, global_events, a股_events):
             .impact-positive {{ color: #007bff; font-weight: bold; }}
             .impact-negative {{ color: #dc3545; font-weight: bold; }}
             .impact-neutral {{ color: #6c757d; font-weight: bold; }}
+            .summary-card {{ background-color: #e3f2fd; padding: 15px; border-radius: 5px; margin-bottom: 20px; }}
+            .summary-stat {{ display: inline-block; margin-right: 20px; padding: 5px 10px; background-color: #bbdefb; border-radius: 3px; }}
+            .news-list {{ list-style-type: none; padding: 0; }}
+            .news-item {{ margin: 10px 0; padding: 10px; background-color: #e8f5e9; border-radius: 5px; }}
         </style>
     </head>
     <body>
         <div class="header">
             <h1>今日A股公告与全球大事件 ({today})</h1>
+        </div>
+        
+        <!-- 公告汇总信息 -->
+        <div class="section">
+            <div class="summary-card">
+                <h2>📊 今日公告汇总</h2>
+                <div class="summary-stat">总公告数: {announcement_summary['total']}</div>
+                <div class="summary-stat">重点公司公告: {announcement_summary['focus_count']}</div>
+                <div class="summary-stat">重大事项: {announcement_summary['important_count']}</div>
+                <div class="summary-stat">利好事件: {announcement_summary['positive_count']}</div>
+                <div class="summary-stat">利空事件: {announcement_summary['negative_count']}</div>
+            </div>
         </div>
         
         <!-- 重点关注公告提醒 -->
@@ -78,6 +94,12 @@ def generate_email_content(announcements, global_events, a股_events):
         <div class="section">
             <h2>📊 A股重要事件分析</h2>
             {generate_a股_events_list(a股_events)}
+        </div>
+        
+        <!-- A股相关影响事件新闻 -->
+        <div class="section">
+            <h2>📰 A股相关影响事件新闻</h2>
+            {generate_a股_related_news_list(a股_related_news)}
         </div>
         
         <!-- 今日A股公告 -->
@@ -138,6 +160,25 @@ def generate_a股_events_list(a股_events):
             <p>{event['事件标题']}</p>
             <p>时间: {event['事件时间']} | 影响: <span class="{impact_class}">{event['事件影响']}</span></p>
             <p><a href="{event['详情链接']}" target="_blank">查看详情</a></p>
+        </li>
+        """
+    list_html += "</ul>"
+    return list_html
+
+def generate_a股_related_news_list(a股_related_news):
+    """生成A股相关影响事件新闻列表"""
+    if not a股_related_news:
+        return "<p>今日无相关影响事件新闻</p>"
+    
+    list_html = "<ul class='news-list'>"
+    for news in a股_related_news:
+        list_html += f"""
+        <li class='news-item'>
+            <h3><a href="{news['url']}" target="_blank">{news['title']}</a></h3>
+            <p class='event-source'>来源: {news['source']}</p>
+            <p class='event-time'>时间: {news['time']}</p>
+            <p>影响: <span class="{news['impact_class']}">{news['impact']}</span></p>
+            <p>摘要: {news['summary']}</p>
         </li>
         """
     list_html += "</ul>"
@@ -210,10 +251,19 @@ def main():
     announcements = crawler.get_today_announcements()
     print(f"成功抓取{len(announcements)}条公告")
     
+    # 生成公告汇总信息
+    announcement_summary = crawler.generate_announcement_summary(announcements)
+    print("生成公告汇总信息...")
+    
     # 分析A股重要事件
     print("正在分析A股重要事件...")
     a股_events = crawler.analyze_a股_events(announcements)
     print(f"识别到{len(a股_events)}条重要事件")
+    
+    # 获取A股相关影响事件新闻
+    print("正在抓取A股相关影响事件新闻...")
+    a股_related_news = crawler.get_a股_related_news()
+    print(f"成功抓取{len(a股_related_news)}条相关新闻")
     
     # 获取全球大事件
     print("正在抓取全球大事件...")
@@ -221,7 +271,7 @@ def main():
     print(f"成功抓取{len(global_events)}条全球大事件")
     
     # 生成邮件内容
-    content = generate_email_content(announcements, global_events, a股_events)
+    content = generate_email_content(announcements, global_events, a股_events, announcement_summary, a股_related_news)
     
     # 发送邮件
     subject = f"今日A股公告与全球大事件 ({datetime.now().strftime('%Y-%m-%d')})"
