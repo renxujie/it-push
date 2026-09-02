@@ -4,11 +4,18 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 from crawler import JuchaoCrawler
 import pandas as pd
+import os  # 新增：用于读取环境变量
 
 def send_email(subject, content):
-    sender_email = "your-email@163.com"
-    sender_password = "your-password"
-    receiver_email = "recipient@163.com"
+    # 从环境变量读取邮箱配置，确保与GitHub Secrets一致
+    sender_email = os.environ.get('SENDER_EMAIL')
+    sender_password = os.environ.get('SENDER_PASSWORD')
+    receiver_email = os.environ.get('RECEIVER_EMAIL')
+    
+    # 验证环境变量是否正确加载
+    if not all([sender_email, sender_password, receiver_email]):
+        print("错误：邮箱环境变量未正确配置")
+        return
     
     msg = MIMEMultipart()
     msg['From'] = sender_email
@@ -18,11 +25,15 @@ def send_email(subject, content):
     msg.attach(MIMEText(content, 'html', 'utf-8'))
     
     try:
-        server = smtplib.SMTP_SSL('smtp.163.com', 465)
-        server.login(sender_email, sender_password)
-        server.send_message(msg)
-        server.quit()
+        # 使用SSL加密连接
+        context = ssl.create_default_context()
+        with smtplib.SMTP_SSL('smtp.163.com', 465, context=context) as server:
+            server.login(sender_email, sender_password)
+            server.sendmail(sender_email, [receiver_email], msg.as_string())
         print("邮件发送成功")
+    except smtplib.SMTPAuthenticationError:
+        print("认证失败: 请检查授权码是否正确，以及是否开启了SMTP服务")
+        print(f"发送邮箱: {sender_email}")
     except Exception as e:
         print(f"邮件发送失败: {str(e)}")
 
