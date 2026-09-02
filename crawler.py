@@ -4,37 +4,55 @@ from datetime import datetime, timedelta
 import time
 import random
 from fake_useragent import UserAgent
+import gzip
+from io import BytesIO
+import json
 
 class JuchaoCrawler:
     def __init__(self):
         self.base_url = "https://www.cninfo.com.cn/new/hisAnnouncement/query" 
         self.ua = UserAgent()
-        self.headers = self._generate_headers()
         self.session = requests.Session()
+        self._setup_session()
     
-    def _generate_headers(self):
-        """生成随机请求头，避免被识别为爬虫"""
-        return {
+    def _setup_session(self):
+        """配置会话，模拟真实浏览器"""
+        self.session.headers.update({
             "Accept": "*/*",
             "Accept-Encoding": "gzip, deflate, br, zstd",
             "Accept-Language": "zh-CN,zh;q=0.9",
             "Connection": "keep-alive",
-            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
             "Host": "www.cninfo.com.cn",
             "Origin": "https://www.cninfo.com.cn", 
             "Referer": "https://www.cninfo.com.cn/new/commonUrl/pageOfSearch?url=disclosure/list/search", 
             "User-Agent": self.ua.random,
             "X-Requested-With": "XMLHttpRequest"
-        }
+        })
+        # 添加Cookie获取逻辑
+        self._get_initial_cookies()
     
-    def _get_cookies(self):
-        """获取网站Cookies，模拟真实浏览器访问"""
+    def _get_initial_cookies(self):
+        """获取初始Cookies"""
         try:
-            self.session.get("https://www.cninfo.com.cn/new/index",  headers=self.headers)
-            return self.session.cookies
+            # 先访问首页获取Cookies
+            self.session.get("https://www.cninfo.com.cn/new/index",  timeout=10)
+            # 再访问搜索页面
+            self.session.get("https://www.cninfo.com.cn/new/commonUrl/pageOfSearch?url=disclosure/list/search",  timeout=10)
         except Exception as e:
-            print(f"获取Cookies失败: {str(e)}")
-            return None
+            print(f"获取初始Cookies失败: {str(e)}")
+    
+    def _decode_response(self, response):
+        """解码服务器返回的可能压缩的内容"""
+        try:
+            if response.headers.get('Content-Encoding') == 'gzip':
+                buf = BytesIO(response.content)
+                with gzip.GzipFile(fileobj=buf) as f:
+                    return f.read().decode('utf-8')
+            else:
+                return response.text
+        except Exception as e:
+            print(f"解码响应失败: {str(e)}")
+            return response.text
     
     def get_today_announcements(self):
         """获取今日发布的所有公告"""
@@ -46,12 +64,9 @@ class JuchaoCrawler:
         page_num = 1
         page_size = 30
         
-        # 先获取Cookies
-        self._get_cookies()
-        
         while True:
             # 每次请求更新User-Agent
-            self.headers["User-Agent"] = self.ua.random
+            self.session.headers['User-Agent'] = self.ua.random
             
             payload = {
                 "pageNum": str(page_num),
@@ -71,47 +86,46 @@ class JuchaoCrawler:
             }
             
             try:
-                # 使用session保持连接
                 response = self.session.post(
                     self.base_url, 
                     data=payload, 
-                    headers=self.headers,
-                    timeout=15
+                    timeout=20
                 )
                 response.raise_for_status()
                 
+                # 解码响应内容
+                content = self._decode_response(response)
+                
                 # 尝试解析JSON
                 try:
-                    data = response.json()
-                except Exception as e:
-                    print(f"解析JSON失败，可能被反爬机制拦截: {str(e)}")
-                    print(f"响应内容: {response.text[:200]}...")
+                    data = json.loads(content)
+                except json.JSONDecodeError:
+                    print(f"第{page_num}页JSON解析失败，响应内容开头: {content[:100]}...")
                     
                     # 尝试重新获取Cookies并重试
-                    self._get_cookies()
-                    time.sleep(random.uniform(5, 10))
+                    self._get_initial_cookies()
+                    time.sleep(random.uniform(10, 20))
                     continue
                 
-                if data["totalAnnouncement"] == 0:
+                if data.get("totalAnnouncement", 0) == 0:
                     break
                 
-                announcements = data["announcements"]
+                announcements = data.get("announcements", [])
                 if not announcements:
                     break
                 
                 all_announcements.extend(self._parse_announcements(announcements))
                 
                 # 检查是否还有下一页
-                if page_num * page_size >= data["totalAnnouncement"]:
+                if page_num * page_size >= data.get("totalAnnouncement", 0):
                     break
                 
                 page_num += 1
-                time.sleep(random.uniform(2, 5))  # 延长随机延迟时间
+                time.sleep(random.uniform(3, 6))  # 进一步延长随机延迟
             
             except Exception as e:
                 print(f"爬取第{page_num}页失败: {str(e)}")
-                # 遇到错误时等待更长时间并重试
-                time.sleep(random.uniform(10, 20))
+                time.sleep(random.uniform(15, 30))  # 遇到错误时等待更长时间
                 continue
         
         return pd.DataFrame(all_announcements)
