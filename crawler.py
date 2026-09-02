@@ -22,28 +22,28 @@ class JuchaoCrawler:
         self.global_news_sources = [
             {
                 "name": "新浪财经",
-                "url": "https://finance.sina.com.cn/", 
+                "url": "https://finance.sina.com.cn/world/", 
                 "selector": ".news-item",
                 "title_selector": "h3",
                 "time_selector": ".time"
             },
             {
                 "name": "网易财经",
-                "url": "https://money.163.com/",
+                "url": "https://money.163.com/world/",
                 "selector": ".news-item",
                 "title_selector": "h3",
                 "time_selector": ".time"
             },
             {
                 "name": "凤凰财经",
-                "url": "https://finance.ifeng.com/", 
+                "url": "https://finance.ifeng.com/world/", 
                 "selector": ".news-item",
                 "title_selector": "h3",
                 "time_selector": ".time"
             },
             {
                 "name": "东方财富网",
-                "url": "https://finance.eastmoney.com/", 
+                "url": "https://finance.eastmoney.com/world.html", 
                 "selector": ".news-item",
                 "title_selector": "h3",
                 "time_selector": ".time"
@@ -53,31 +53,31 @@ class JuchaoCrawler:
         # A股相关影响事件新闻数据源
         self.a股_related_news_sources = [
             {
-                "name": "东方财富网",
-                "url": "https://finance.eastmoney.com/global/", 
-                "selector": ".news-item",
-                "title_selector": "h3",
-                "time_selector": ".time"
-            },
-            {
                 "name": "新浪财经",
-                "url": "https://finance.sina.com.cn/global/", 
+                "url": "https://finance.sina.com.cn/stock/", 
                 "selector": ".news-item",
                 "title_selector": "h3",
                 "time_selector": ".time"
             },
             {
-                "name": "财新网",
-                "url": "https://www.caixin.com/global/", 
-                "selector": ".item",
+                "name": "网易财经",
+                "url": "https://money.163.com/stock/",
+                "selector": ".news-item",
                 "title_selector": "h3",
                 "time_selector": ".time"
             },
             {
-                "name": "第一财经",
-                "url": "https://www.yicai.com/global/", 
-                "selector": ".news-list-item",
-                "title_selector": "h2",
+                "name": "凤凰财经",
+                "url": "https://finance.ifeng.com/stock/", 
+                "selector": ".news-item",
+                "title_selector": "h3",
+                "time_selector": ".time"
+            },
+            {
+                "name": "东方财富网",
+                "url": "https://finance.eastmoney.com/", 
+                "selector": ".news-item",
+                "title_selector": "h3",
                 "time_selector": ".time"
             }
         ]
@@ -431,7 +431,7 @@ class JuchaoCrawler:
         a股_keywords = [
             "A股", "上证指数", "深证成指", "创业板", "沪深两市", 
             "央行", "证监会", "货币政策", "降准", "降息", "印花税",
-            "IPO", "退市", "再融资", "减持", "增持", "回购"
+            "IPO", "退市", "再融资", "减持", "增持", "回购", "龙虎榜"
         ]
         
         return any(keyword in title for keyword in a股_keywords)
@@ -441,13 +441,13 @@ class JuchaoCrawler:
         # 利好关键词
         positive_keywords = [
             "降准", "降息", "宽松", "利好", "上涨", "增长", 
-            "扩大", "扶持", "激励", "补贴", "降息"
+            "扩大", "扶持", "激励", "补贴", "降息", "政策支持"
         ]
         
         # 利空关键词
         negative_keywords = [
             "加息", "收紧", "利空", "下跌", "下降", "收缩", 
-            "监管", "处罚", "调查", "限制", "退市"
+            "监管", "处罚", "调查", "限制", "退市", "政策收紧"
         ]
         
         # 检查是否包含利好关键词
