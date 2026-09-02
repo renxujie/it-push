@@ -22,61 +22,65 @@ class JuchaoCrawler:
         self.global_news_sources = [
             {
                 "name": "新浪财经",
-                "url": "https://finance.sina.com.cn/world/", 
-                "selector": ".news-item",
-                "title_selector": "h3",
-                "time_selector": ".time"
-            },
-            {
-                "name": "网易财经",
-                "url": "https://money.163.com/world/",
-                "selector": ".news-item",
-                "title_selector": "h3",
+                "url": "https://finance.sina.com.cn/world.html", 
+                "selector": ".list-item",
+                "title_selector": "h2",
                 "time_selector": ".time"
             },
             {
                 "name": "凤凰财经",
-                "url": "https://finance.ifeng.com/world/", 
+                "url": "https://finance.ifeng.com/list/145,0,0,0,1,0.html", 
                 "selector": ".news-item",
                 "title_selector": "h3",
                 "time_selector": ".time"
             },
             {
-                "name": "东方财富网",
-                "url": "https://finance.eastmoney.com/world.html", 
+                "name": "中国经济网",
+                "url": "https://world.ce.cn/", 
+                "selector": ".news-item",
+                "title_selector": "h3",
+                "time_selector": ".time"
+            },
+            {
+                "name": "环球财经网",
+                "url": "https://www.hqcj.com/", 
                 "selector": ".news-item",
                 "title_selector": "h3",
                 "time_selector": ".time"
             }
         ]
         
-        # A股相关影响事件新闻数据源
-        self.a股_related_news_sources = [
+        # 重点公司相关新闻数据源
+        self.focus_news_sources = [
             {
                 "name": "新浪财经",
                 "url": "https://finance.sina.com.cn/stock/", 
+                "search_url": "https://search.sina.com.cn/?q={}&c=news&range=all", 
                 "selector": ".news-item",
-                "title_selector": "h3",
-                "time_selector": ".time"
-            },
-            {
-                "name": "网易财经",
-                "url": "https://money.163.com/stock/",
-                "selector": ".news-item",
-                "title_selector": "h3",
-                "time_selector": ".time"
-            },
-            {
-                "name": "凤凰财经",
-                "url": "https://finance.ifeng.com/stock/", 
-                "selector": ".news-item",
-                "title_selector": "h3",
+                "title_selector": "h2",
                 "time_selector": ".time"
             },
             {
                 "name": "东方财富网",
-                "url": "https://finance.eastmoney.com/", 
+                "url": "https://www.eastmoney.com/", 
+                "search_url": "https://so.eastmoney.com/news/s?keyword={}", 
                 "selector": ".news-item",
+                "title_selector": "h3",
+                "time_selector": ".time"
+            },
+            {
+                "name": "同花顺财经",
+                "url": "http://www.10jqka.com.cn/", 
+                "search_url": "http://so.10jqka.com.cn/s?wd={}",
+                "selector": ".news-item",
+                "title_selector": "h3",
+                "time_selector": ".time"
+            },
+            {
+                "name": "雪球",
+                "url": "https://xueqiu.com/", 
+                "search_url": "https://xueqiu.com/search?q={}&type=all", 
+                "selector": ".item",
                 "title_selector": "h3",
                 "time_selector": ".time"
             }
@@ -364,90 +368,92 @@ class JuchaoCrawler:
         
         return "中性"
     
-    def get_a股_related_news(self):
-        """获取A股相关影响事件新闻"""
-        a股_related_news = []
+    def get_focus_company_news(self):
+        """获取重点公司相关新闻"""
+        focus_company_news = {}
         
-        # 使用requests+BeautifulSoup抓取数据
         try:
-            for source in self.a股_related_news_sources:
-                try:
-                    print(f"正在抓取{source['name']}的A股相关新闻...")
-                    
-                    # 添加随机等待时间
-                    time.sleep(random.uniform(1, 3))
-                    
-                    # 构造请求头
-                    headers = {
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-                        "Accept-Language": "zh-CN,zh;q=0.9",
-                        "Referer": "https://www.baidu.com/", 
-                        "Upgrade-Insecure-Requests": "1"
-                    }
-                    
-                    # 访问目标网站
-                    response = requests.get(source["url"], headers=headers, timeout=15)
-                    response.raise_for_status()
-                    
-                    # 解析HTML
-                    soup = BeautifulSoup(response.text, "html.parser")
-                    items = soup.select(source["selector"])
-                    
-                    news_list = []
-                    for item in items:
-                        news = self._parse_html_item(item, source)
-                        if news:
-                            # 判断是否与A股相关
-                            if self._is_a股_related(news["title"]):
-                                # 评估对A股的影响
-                                impact, impact_class = self._assess_news_impact(news["title"])
-                                news["impact"] = impact
-                                news["impact_class"] = impact_class
-                                
-                                # 生成摘要
-                                news["summary"] = self._generate_news_summary(news["title"])
-                                
-                                news_list.append(news)
-                    
-                    a股_related_news.extend(news_list)
-                    print(f"成功抓取{source['name']}的A股相关新闻，获取{len(news_list)}条事件")
-                    
-                except Exception as e:
-                    print(f"抓取{source['name']}的A股相关新闻失败: {str(e)}")
-                    continue
+            for company in self.focus_companies:
+                company_news = []
+                print(f"正在抓取{company}的相关新闻...")
+                
+                for source in self.focus_news_sources:
+                    try:
+                        # 构造搜索URL
+                        search_url = source["search_url"].format(urllib.parse.quote(company))
+                        
+                        # 添加随机等待时间
+                        time.sleep(random.uniform(1, 3))
+                        
+                        # 构造请求头
+                        headers = {
+                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+                            "Accept-Language": "zh-CN,zh;q=0.9",
+                            "Referer": source["url"],
+                            "Upgrade-Insecure-Requests": "1"
+                        }
+                        
+                        # 访问目标网站
+                        response = requests.get(search_url, headers=headers, timeout=15)
+                        response.raise_for_status()
+                        
+                        # 解析HTML
+                        soup = BeautifulSoup(response.text, "html.parser")
+                        items = soup.select(source["selector"])
+                        
+                        for item in items:
+                            news = self._parse_html_item(item, source)
+                            if news:
+                                # 判断是否与公司相关
+                                if company in news["title"]:
+                                    # 评估对公司的影响
+                                    impact, impact_class = self._assess_news_impact(news["title"], company)
+                                    news["impact"] = impact
+                                    news["impact_class"] = impact_class
+                                    
+                                    # 生成摘要
+                                    news["summary"] = self._generate_news_summary(news["title"])
+                                    
+                                    company_news.append(news)
+                        
+                        print(f"成功抓取{source['name']}的{company}相关新闻")
+                        
+                    except Exception as e:
+                        print(f"抓取{source['name']}的{company}相关新闻失败: {str(e)}")
+                        continue
+                
+                # 去重和排序
+                unique_news = self._deduplicate_news(company_news)
+                sorted_news = sorted(unique_news, key=lambda x: x["time"], reverse=True)
+                
+                focus_company_news[company] = sorted_news[:10]  # 返回最新10条新闻
+                
+                print(f"成功抓取{len(sorted_news)}条{company}相关新闻")
             
-            # 去重和排序
-            unique_news = self._deduplicate_news(a股_related_news)
-            sorted_news = sorted(unique_news, key=lambda x: x["time"], reverse=True)
-            
-            return sorted_news[:20]  # 返回最新20条新闻
+            return focus_company_news
             
         except Exception as e:
-            print(f"A股相关影响事件新闻抓取失败: {str(e)}")
-            return []
+            print(f"重点公司相关新闻抓取失败: {str(e)}")
+            return {}
     
-    def _is_a股_related(self, title):
-        """判断新闻是否与A股相关"""
-        a股_keywords = [
-            "A股", "上证指数", "深证成指", "创业板", "沪深两市", 
-            "央行", "证监会", "货币政策", "降准", "降息", "印花税",
-            "IPO", "退市", "再融资", "减持", "增持", "回购", "龙虎榜"
-        ]
-        
-        return any(keyword in title for keyword in a股_keywords)
+    def _is_company_related(self, title, company):
+        """判断新闻是否与公司相关"""
+        return company in title
     
-    def _assess_news_impact(self, title):
-        """评估新闻对A股的影响"""
+    def _assess_news_impact(self, title, company):
+        """评估新闻对公司的影响"""
         # 利好关键词
         positive_keywords = [
-            "降准", "降息", "宽松", "利好", "上涨", "增长", 
-            "扩大", "扶持", "激励", "补贴", "降息", "政策支持"
+            "重大合同", "合作", "战略合作", "获奖", "专利", 
+            "业绩预增", "高送转", "分红", "回购", "增持", 
+            "利好", "上涨", "增长", "扩大", "扶持", "激励"
         ]
         
         # 利空关键词
         negative_keywords = [
-            "加息", "收紧", "利空", "下跌", "下降", "收缩", 
-            "监管", "处罚", "调查", "限制", "退市", "政策收紧"
+            "监管", "处罚", "调查", "诉讼", "退市", 
+            "业绩预亏", "下降", "下跌", "亏损", "减持", 
+            "利空", "利空消息", "负面消息"
         ]
         
         # 检查是否包含利好关键词
