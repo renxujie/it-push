@@ -24,7 +24,7 @@ def generate_announcement_report(df, key_companies):
     html_report = f"""
     <html>
     <head>
-        <title>巨潮资讯每日速递 - {today}</title>
+        <title>小旭资讯每日速递 - {today}</title>
         <style>
             body {{ font-family: Arial, sans-serif; margin: 20px; }}
             h1 {{ color: #2c3e50; }}
@@ -39,7 +39,7 @@ def generate_announcement_report(df, key_companies):
         </style>
     </head>
     <body>
-        <h1>📅 巨潮资讯每日速递 - {today}</h1>
+        <h1>📅 小旭资讯每日速递 - {today}</h1>
         
         <div class="summary">
             <h3>📊 今日公告概览</h3>
