@@ -60,35 +60,38 @@ class JuchaoCrawler:
         self.page.wait_for_selector(".search-input", timeout=20000)
         
         # 构造请求参数
-        payload = {
-            "pageNum": "1",
-            "pageSize": "100",  # 每页最多100条
-            "column": "szse",
-            "tabName": "fulltext",
-            "plate": "",
-            "stock": "",
-            "searchkey": "",
-            "secid": "",
-            "category": "",
-            "trade": "",
-            "seDate": f"{today}~{today}",
-            "sortName": "",
-            "sortType": "",
-            "isHLtitle": "true"
+        request_data = {
+            "url": self.base_url,
+            "payload": {
+                "pageNum": "1",
+                "pageSize": "100",  # 每页最多100条
+                "column": "szse",
+                "tabName": "fulltext",
+                "plate": "",
+                "stock": "",
+                "searchkey": "",
+                "secid": "",
+                "category": "",
+                "trade": "",
+                "seDate": f"{today}~{today}",
+                "sortName": "",
+                "sortType": "",
+                "isHLtitle": "true"
+            }
         }
         
-        # 发送请求获取数据
-        response = self.page.evaluate("""async (url, payload) => {
-            const response = await fetch(url, {
+        # 发送请求获取数据 - 修复了参数传递方式
+        response = self.page.evaluate("""async (data) => {
+            const response = await fetch(data.url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
                     'X-Requested-With': 'XMLHttpRequest'
                 },
-                body: new URLSearchParams(payload)
+                body: new URLSearchParams(data.payload)
             });
             return await response.json();
-        }""", self.base_url, payload)
+        }""", request_data)
         
         return response
     
