@@ -2,12 +2,12 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
+import ssl  # 确保导入ssl模块
+import os
 from crawler import JuchaoCrawler
-import pandas as pd
-import os  # 新增：用于读取环境变量
 
 def send_email(subject, content):
-    # 从环境变量读取邮箱配置，确保与GitHub Secrets一致
+    # 从环境变量读取邮箱配置
     sender_email = os.environ.get('SENDER_EMAIL')
     sender_password = os.environ.get('SENDER_PASSWORD')
     receiver_email = os.environ.get('RECEIVER_EMAIL')
@@ -36,102 +36,127 @@ def send_email(subject, content):
         print(f"发送邮箱: {sender_email}")
     except Exception as e:
         print(f"邮件发送失败: {str(e)}")
+        print(f"错误类型: {type(e).__name__}")
 
-def generate_html_report(announcements, global_events):
-    """生成HTML格式的报告"""
+def generate_email_content(announcements, global_events):
+    """生成邮件内容"""
     today = datetime.now().strftime("%Y-%m-%d")
     
-    html = f"""
+    content = f"""
     <html>
     <head>
-        <title>每日资讯简报 - {today}</title>
+        <title>今日A股公告与全球大事件</title>
         <style>
-            body {{ font-family: Arial, sans-serif; margin: 20px; }}
-            h1 {{ color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }}
-            h2 {{ color: #3498db; margin-top: 30px; }}
-            .announcement-item {{ margin-bottom: 15px; padding: 10px; border: 1px solid #eee; border-radius: 5px; }}
-            .event-item {{ margin-bottom: 10px; padding: 8px; border-left: 3px solid #3498db; }}
-            .company-name {{ font-weight: bold; color: #2c3e50; }}
-            .announcement-type {{ color: #e74c3c; font-size: 0.9em; }}
-            .event-source {{ color: #7f8c8d; font-size: 0.8em; }}
-            .time {{ color: #95a5a6; font-size: 0.8em; }}
+            body {{ font-family: 'Microsoft YaHei', sans-serif; }}
+            .header {{ background-color: #f5f5f5; padding: 10px; border-bottom: 1px solid #ddd; }}
+            .section {{ margin: 20px 0; }}
+            .announcement-table {{ width: 100%; border-collapse: collapse; }}
+            .announcement-table th {{ background-color: #f0f0f0; padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }}
+            .announcement-table td {{ padding: 8px; border-bottom: 1px solid #eee; }}
+            .event-list {{ list-style-type: none; padding: 0; }}
+            .event-item {{ margin: 10px 0; padding: 10px; background-color: #fafafa; border-radius: 5px; }}
+            .event-source {{ color: #666; font-size: 12px; }}
+            .event-time {{ color: #999; font-size: 12px; }}
         </style>
     </head>
     <body>
-        <h1>每日资讯简报 - {today}</h1>
-    """
-    
-    # 添加A股公告部分
-    if not announcements.empty:
-        html += """
-        <h2>📢 A股上市公司公告</h2>
-        """
+        <div class="header">
+            <h1>今日A股公告与全球大事件 ({today})</h1>
+        </div>
         
-        # 按分类分组显示
-        grouped = announcements.groupby("公告类型")
-        for category, group in grouped:
-            html += f"""
-            <h3>{category} ({len(group)}条)</h3>
-            """
-            for _, row in group.iterrows():
-                html += f"""
-                <div class="announcement-item">
-                    <div class="company-name">{row['公司名称']}({row['公司代码']})</div>
-                    <div><a href="{row['公告链接']}" target="_blank">{row['公告标题']}</a></div>
-                    <div class="time">{row['公告时间']}</div>
-                    <div><a href="{row['PDF下载链接']}" target="_blank">📥 下载PDF</a></div>
-                </div>
-                """
-    
-    # 添加全球大事件部分
-    if global_events:
-        html += """
-        <h2>🌍 全球大事件</h2>
-        """
+        <div class="section">
+            <h2>今日A股公告</h2>
+            {generate_announcement_table(announcements)}
+        </div>
         
-        # 按分类分组显示
-        events_by_category = {}
-        for event in global_events:
-            category = event["category"]
-            if category not in events_by_category:
-                events_by_category[category] = []
-            events_by_category[category].append(event)
-        
-        for category, events in events_by_category.items():
-            html += f"""
-            <h3>{category} ({len(events)}条)</h3>
-            """
-            for event in events:
-                html += f"""
-                <div class="event-item">
-                    <div><a href="{event['url']}" target="_blank">{event['title']}</a></div>
-                    <div class="event-source">{event['source']} · {event['time']}</div>
-                </div>
-                """
-    
-    html += """
+        <div class="section">
+            <h2>今日全球大事件</h2>
+            {generate_global_events_list(global_events)}
+        </div>
     </body>
     </html>
     """
     
-    return html
+    return content
+
+def generate_announcement_table(announcements):
+    """生成公告表格"""
+    if announcements.empty:
+        return "<p>今日暂无公告</p>"
+    
+    table_html = """
+    <table class="announcement-table">
+        <tr>
+            <th>公司代码</th>
+            <th>公司名称</th>
+            <th>公告标题</th>
+            <th>公告时间</th>
+            <th>公告类型</th>
+            <th>操作</th>
+        </tr>
+    """
+    
+    for _, row in announcements.iterrows():
+        table_html += f"""
+        <tr>
+            <td>{row['公司代码']}</td>
+            <td>{row['公司名称']}</td>
+            <td>{row['公告标题']}</td>
+            <td>{row['公告时间']}</td>
+            <td>{row['公告类型']}</td>
+            <td>
+                <a href="{row['公告链接']}" target="_blank">查看详情</a> | 
+                <a href="{row['PDF下载链接']}" target="_blank">下载PDF</a>
+            </td>
+        </tr>
+        """
+    
+    table_html += "</table>"
+    return table_html
+
+def generate_global_events_list(global_events):
+    """生成全球大事件列表"""
+    if not global_events:
+        return "<p>今日暂无全球大事件</p>"
+    
+    list_html = "<ul class='event-list'>"
+    
+    for event in global_events:
+        list_html += f"""
+        <li class='event-item'>
+            <h3><a href="{event['url']}" target="_blank">{event['title']}</a></h3>
+            <p class='event-source'>来源: {event['source']}</p>
+            <p class='event-time'>时间: {event['time']}</p>
+            <p>分类: {event['category']}</p>
+        </li>
+        """
+    
+    list_html += "</ul>"
+    return list_html
 
 def main():
+    """主函数"""
+    print("开始抓取数据...")
+    
+    # 初始化爬虫
     crawler = JuchaoCrawler()
     
-    # 获取A股公告
+    # 获取今日公告
+    print("正在抓取今日A股公告...")
     announcements = crawler.get_today_announcements()
+    print(f"成功抓取{len(announcements)}条公告")
     
     # 获取全球大事件
+    print("正在抓取全球大事件...")
     global_events = crawler.get_global_events()
+    print(f"成功抓取{len(global_events)}条全球大事件")
     
-    # 生成HTML报告
-    html_content = generate_html_report(announcements, global_events)
+    # 生成邮件内容
+    content = generate_email_content(announcements, global_events)
     
     # 发送邮件
-    today = datetime.now().strftime("%Y-%m-%d")
-    subject = f"每日资讯简报 - {today}"
-    send_email(subject, html_content)
+    subject = f"今日A股公告与全球大事件 ({datetime.now().strftime('%Y-%m-%d')})"
+    send_email(subject, content)
 
 if __name__ == "__main__":
     main()
