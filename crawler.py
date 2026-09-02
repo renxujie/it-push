@@ -15,26 +15,31 @@ class JuchaoCrawler:
         self.context = None
         self.page = None
         
-        # 全球大事件数据源配置
+        # 全球大事件数据源配置，更换为更稳定的网站
         self.global_news_sources = [
             {
-                "name": "华尔街见闻",
-                "url": "https://wallstreetcn.com/live/global", 
-                "selector": ".live-item"
+                "name": "东方财富网",
+                "url": "https://finance.eastmoney.com/global/", 
+                "selector": ".news-item"
             },
             {
-                "name": "路透中文网",
-                "url": "https://www.reuters.com/zh/", 
-                "selector": ".story-card__title"
+                "name": "新浪财经",
+                "url": "https://finance.sina.com.cn/global/", 
+                "selector": ".news-item"
             },
             {
-                "name": "BBC中文网",
-                "url": "https://www.bbc.com/zhongwen/simp", 
-                "selector": ".media-list__item"
+                "name": "财新网",
+                "url": "https://www.caixin.com/global/", 
+                "selector": ".item"
             },
             {
-                "name": "财联社",
-                "url": "https://www.cls.cn/economic", 
+                "name": "第一财经",
+                "url": "https://www.yicai.com/global/", 
+                "selector": ".news-list-item"
+            },
+            {
+                "name": "和讯网",
+                "url": "https://world.hexun.com/", 
                 "selector": ".news-item"
             }
         ]
@@ -201,7 +206,16 @@ class JuchaoCrawler:
             return ""
     
     def _classify_announcement(self, title):
-        """根据标题对公告进行分类"""
+        """优化公告分类逻辑，增加重点公司识别"""
+        # 重点关注公司列表
+        focus_companies = ['麒信安', '宇信科技', '拓维信息', '卧龙电驱', '三花智控']
+        
+        # 检查是否为重点公司公告
+        for company in focus_companies:
+            if company in title:
+                return f"重点关注 | {company}公告"
+        
+        # 优化分类规则
         classification_rules = [
             ("重大事项", ["重大事项", "重大合同", "重大资产重组", "对外投资", "重大诉讼", "重大仲裁"]),
             ("财务报告", ["年报", "半年报", "季报", "财务报告", "业绩预告", "业绩快报"]),
@@ -210,6 +224,7 @@ class JuchaoCrawler:
             ("股东大会", ["股东大会", "临时股东大会", "股东大会议决议"]),
             ("关联交易", ["关联交易", "关联方", "关联关系"]),
             ("对外担保", ["对外担保", "担保事项"]),
+            ("行业动态", ["行业政策", "行业标准", "行业研究"]),
             ("其他", [])
         ]
         
@@ -218,8 +233,43 @@ class JuchaoCrawler:
                 return category
         return "其他"
     
+    def analyze_a股_events(self, announcements):
+        """分析A股公告中的重要事件"""
+        important_events = []
+        
+        # 筛选重大事项
+        important_announcements = announcements[announcements['公告类型'].str.contains("重大事项|重点关注")]
+        
+        for _, row in important_announcements.iterrows():
+            event = {
+                "公司名称": row['公司名称'],
+                "事件类型": row['公告类型'],
+                "事件标题": row['公告标题'],
+                "事件时间": row['公告时间'],
+                "事件影响": self._assess_event_impact(row),
+                "详情链接": row['公告链接']
+            }
+            important_events.append(event)
+        
+        return important_events
+    
+    def _assess_event_impact(self, row):
+        """评估事件对A股的影响"""
+        title = row['公告标题']
+        
+        impact_level = {
+            "重大利好": ["重大合同", "资产重组", "对外投资", "业绩预增"],
+            "中性": ["股东大会", "常规公告", "关联交易"],
+            "重大利空": ["监管函", "行政处罚", "重大诉讼", "业绩预亏"]
+        }
+        
+        for level, keywords in impact_level.items():
+            if any(keyword in title for keyword in keywords):
+                return level
+        return "中性"
+    
     def get_global_events(self):
-        """获取每日全球大事件 - 适配反爬机制"""
+        """优化全球大事件抓取，更换更稳定的数据源"""
         global_events = []
         
         # 使用Playwright统一处理所有网站
@@ -233,7 +283,8 @@ class JuchaoCrawler:
                     "--no-sandbox",
                     "--disable-setuid-sandbox",
                     "--disable-dev-shm-usage",
-                    "--disable-gpu"
+                    "--disable-gpu",
+                    "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
                 ]
             )
             
@@ -247,56 +298,27 @@ class JuchaoCrawler:
             for source in self.global_news_sources:
                 try:
                     print(f"正在抓取{source['name']}...")
+                    page.goto(source["url"], wait_until="networkidle", timeout=30000)
                     
-                    if source["name"] == "路透中文网":
-                        # 路透中文网特殊处理
-                        page.goto(source["url"], wait_until="networkidle", timeout=30000)
-                        
-                        # 等待页面加载完成
-                        page.wait_for_selector(".story-card__title", timeout=20000)
-                        
-                        # 获取页面内容
-                        html = page.content()
-                        soup = BeautifulSoup(html, "html.parser")
-                        items = soup.select(source["selector"])
-                        
-                        # 解析新闻条目
-                        for item in items:
-                            try:
-                                title = item.get_text(strip=True)
-                                url = "https://www.reuters.com"  + item.find("a")["href"]
-                                
-                                # 模拟点击进入详情页获取时间
-                                page.goto(url, wait_until="networkidle", timeout=20000)
-                                time_str = page.locator(".date-line__date").inner_text(timeout=10000)
-                                
-                                global_events.append({
-                                    "source": "路透中文网",
-                                    "title": title,
-                                    "time": self._parse_time(time_str),
-                                    "url": url,
-                                    "category": self._classify_global_event(title)
-                                })
-                                
-                            except Exception as e:
-                                print(f"解析路透中文网新闻失败: {str(e)}")
-                                continue
-                                
-                    else:
-                        # 其他网站处理逻辑
-                        page.goto(source["url"], wait_until="networkidle", timeout=30000)
-                        page.wait_for_selector(source["selector"], timeout=20000)
-                        
-                        html = page.content()
-                        soup = BeautifulSoup(html, "html.parser")
-                        items = soup.select(source["selector"])
-                        
-                        for item in items:
-                            event = self._parse_html_item(item, source)
-                            if event:
-                                global_events.append(event)
-                                
-                    print(f"成功抓取{source['name']}，获取{len(global_events)}条事件")
+                    # 添加随机等待时间，模拟人类行为
+                    time.sleep(random.uniform(2, 5))
+                    
+                    # 等待目标元素加载
+                    page.wait_for_selector(source["selector"], timeout=20000)
+                    
+                    # 获取页面HTML
+                    html = page.content()
+                    soup = BeautifulSoup(html, "html.parser")
+                    items = soup.select(source["selector"])
+                    
+                    events = []
+                    for item in items:
+                        event = self._parse_html_item(item, source)
+                        if event:
+                            events.append(event)
+                    
+                    global_events.extend(events)
+                    print(f"成功抓取{source['name']}，获取{len(events)}条事件")
                     
                 except Exception as e:
                     print(f"抓取{source['name']}失败: {str(e)}")
@@ -319,47 +341,78 @@ class JuchaoCrawler:
                 playwright.stop()
     
     def _parse_html_item(self, item, source):
-        """解析HTML新闻条目"""
+        """更新HTML解析逻辑，适配新的数据源"""
         try:
-            if source["name"] == "华尔街见闻":
-                title = item.select_one(".live-item__title").get_text(strip=True)
-                time_str = item.select_one(".live-item__time").get_text(strip=True)
-                url = "https://wallstreetcn.com"  + item.select_one("a")["href"]
+            if source["name"] == "东方财富网":
+                title = item.select_one(".title").get_text(strip=True) if item.select_one(".title") else ""
+                time_str = item.select_one(".time").get_text(strip=True) if item.select_one(".time") else ""
+                url = item.select_one("a")["href"] if item.select_one("a") else ""
                 
-                return {
-                    "source": "华尔街见闻",
-                    "title": title,
-                    "time": self._parse_time(time_str),
-                    "url": url,
-                    "category": self._classify_global_event(title)
-                }
+                if title and url:
+                    return {
+                        "source": "东方财富网",
+                        "title": title,
+                        "time": self._parse_time(time_str),
+                        "url": url,
+                        "category": self._classify_global_event(title)
+                    }
+                    
+            elif source["name"] == "新浪财经":
+                title = item.select_one("h3").get_text(strip=True) if item.select_one("h3") else ""
+                time_str = item.select_one(".time").get_text(strip=True) if item.select_one(".time") else ""
+                url = item.select_one("a")["href"] if item.select_one("a") else ""
                 
-            elif source["name"] == "BBC中文网":
-                title = item.select_one("h3").get_text(strip=True)
-                time_str = item.select_one(".media-list__date").get_text(strip=True)
-                url = "https://www.bbc.com"  + item.select_one("a")["href"]
+                if title and url:
+                    return {
+                        "source": "新浪财经",
+                        "title": title,
+                        "time": self._parse_time(time_str),
+                        "url": url,
+                        "category": self._classify_global_event(title)
+                    }
+                    
+            elif source["name"] == "财新网":
+                title = item.select_one(".title").get_text(strip=True) if item.select_one(".title") else ""
+                time_str = item.select_one(".time").get_text(strip=True) if item.select_one(".time") else ""
+                url = "https://www.caixin.com"  + item.select_one("a")["href"] if item.select_one("a") else ""
                 
-                return {
-                    "source": "BBC中文网",
-                    "title": title,
-                    "time": self._parse_time(time_str),
-                    "url": url,
-                    "category": self._classify_global_event(title)
-                }
+                if title and url:
+                    return {
+                        "source": "财新网",
+                        "title": title,
+                        "time": self._parse_time(time_str),
+                        "url": url,
+                        "category": self._classify_global_event(title)
+                    }
+                    
+            elif source["name"] == "第一财经":
+                title = item.select_one("h2").get_text(strip=True) if item.select_one("h2") else ""
+                time_str = item.select_one(".time").get_text(strip=True) if item.select_one(".time") else ""
+                url = item.select_one("a")["href"] if item.select_one("a") else ""
                 
-            elif source["name"] == "财联社":
-                title = item.select_one(".news-title").get_text(strip=True)
-                time_str = item.select_one(".news-time").get_text(strip=True)
-                url = "https://www.cls.cn"  + item.select_one("a")["href"]
+                if title and url:
+                    return {
+                        "source": "第一财经",
+                        "title": title,
+                        "time": self._parse_time(time_str),
+                        "url": url,
+                        "category": self._classify_global_event(title)
+                    }
+                    
+            elif source["name"] == "和讯网":
+                title = item.select_one(".title").get_text(strip=True) if item.select_one(".title") else ""
+                time_str = item.select_one(".time").get_text(strip=True) if item.select_one(".time") else ""
+                url = item.select_one("a")["href"] if item.select_one("a") else ""
                 
-                return {
-                    "source": "财联社",
-                    "title": title,
-                    "time": self._parse_time(time_str),
-                    "url": url,
-                    "category": self._classify_global_event(title)
-                }
-                
+                if title and url:
+                    return {
+                        "source": "和讯网",
+                        "title": title,
+                        "time": self._parse_time(time_str),
+                        "url": url,
+                        "category": self._classify_global_event(title)
+                    }
+                    
         except Exception as e:
             print(f"解析{source['name']}新闻失败: {str(e)}")
             return None
