@@ -20,20 +20,22 @@ class JuchaoCrawler:
             {
                 "name": "华尔街见闻",
                 "url": "https://wallstreetcn.com/live/global", 
-                "type": "html",
                 "selector": ".live-item"
             },
             {
                 "name": "路透中文网",
                 "url": "https://www.reuters.com/zh/", 
-                "type": "html",
-                "selector": ".news-headline-list li"
+                "selector": ".story-card__title"
             },
             {
                 "name": "BBC中文网",
                 "url": "https://www.bbc.com/zhongwen/simp", 
-                "type": "html",
                 "selector": ".media-list__item"
+            },
+            {
+                "name": "财联社",
+                "url": "https://www.cls.cn/economic", 
+                "selector": ".news-item"
             }
         ]
     
@@ -105,7 +107,7 @@ class JuchaoCrawler:
             }
         }
         
-        # 发送请求获取数据 - 修复了参数传递方式
+        # 发送请求获取数据
         response = self.page.evaluate("""async (data) => {
             const response = await fetch(data.url, {
                 method: 'POST',
@@ -217,45 +219,104 @@ class JuchaoCrawler:
         return "其他"
     
     def get_global_events(self):
-        """获取每日全球大事件"""
+        """获取每日全球大事件 - 适配反爬机制"""
         global_events = []
         
-        for source in self.global_news_sources:
-            try:
-                if source["type"] == "html":
-                    events = self._scrape_html_news(source)
-                    global_events.extend(events)
+        # 使用Playwright统一处理所有网站
+        playwright = None
+        try:
+            # 启动浏览器
+            playwright = sync_playwright().start()
+            browser = playwright.chromium.launch(
+                headless=True,
+                args=[
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu"
+                ]
+            )
+            
+            context = browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+                locale="zh-CN",
+                timezone_id="Asia/Shanghai"
+            )
+            page = context.new_page()
+            
+            for source in self.global_news_sources:
+                try:
+                    print(f"正在抓取{source['name']}...")
                     
-            except Exception as e:
-                print(f"抓取{source['name']}失败: {str(e)}")
-                continue
-        
-        # 去重和排序
-        unique_events = self._deduplicate_events(global_events)
-        sorted_events = sorted(unique_events, key=lambda x: x["time"], reverse=True)
-        
-        return sorted_events[:20]  # 返回最新20条事件
-    
-    def _scrape_html_news(self, source):
-        """抓取HTML格式的新闻网站"""
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-            "Accept-Language": "zh-CN,zh;q=0.9"
-        }
-        
-        response = requests.get(source["url"], headers=headers, timeout=15)
-        response.raise_for_status()
-        
-        soup = BeautifulSoup(response.text, "html.parser")
-        items = soup.select(source["selector"])
-        
-        events = []
-        for item in items:
-            event = self._parse_html_item(item, source)
-            if event:
-                events.append(event)
-        
-        return events
+                    if source["name"] == "路透中文网":
+                        # 路透中文网特殊处理
+                        page.goto(source["url"], wait_until="networkidle", timeout=30000)
+                        
+                        # 等待页面加载完成
+                        page.wait_for_selector(".story-card__title", timeout=20000)
+                        
+                        # 获取页面内容
+                        html = page.content()
+                        soup = BeautifulSoup(html, "html.parser")
+                        items = soup.select(source["selector"])
+                        
+                        # 解析新闻条目
+                        for item in items:
+                            try:
+                                title = item.get_text(strip=True)
+                                url = "https://www.reuters.com"  + item.find("a")["href"]
+                                
+                                # 模拟点击进入详情页获取时间
+                                page.goto(url, wait_until="networkidle", timeout=20000)
+                                time_str = page.locator(".date-line__date").inner_text(timeout=10000)
+                                
+                                global_events.append({
+                                    "source": "路透中文网",
+                                    "title": title,
+                                    "time": self._parse_time(time_str),
+                                    "url": url,
+                                    "category": self._classify_global_event(title)
+                                })
+                                
+                            except Exception as e:
+                                print(f"解析路透中文网新闻失败: {str(e)}")
+                                continue
+                                
+                    else:
+                        # 其他网站处理逻辑
+                        page.goto(source["url"], wait_until="networkidle", timeout=30000)
+                        page.wait_for_selector(source["selector"], timeout=20000)
+                        
+                        html = page.content()
+                        soup = BeautifulSoup(html, "html.parser")
+                        items = soup.select(source["selector"])
+                        
+                        for item in items:
+                            event = self._parse_html_item(item, source)
+                            if event:
+                                global_events.append(event)
+                                
+                    print(f"成功抓取{source['name']}，获取{len(global_events)}条事件")
+                    
+                except Exception as e:
+                    print(f"抓取{source['name']}失败: {str(e)}")
+                    continue
+            
+            # 去重和排序
+            unique_events = self._deduplicate_events(global_events)
+            sorted_events = sorted(unique_events, key=lambda x: x["time"], reverse=True)
+            
+            return sorted_events[:20]  # 返回最新20条事件
+            
+        except Exception as e:
+            print(f"全局大事件抓取失败: {str(e)}")
+            return []
+        finally:
+            # 关闭浏览器
+            if browser:
+                browser.close()
+            if playwright:
+                playwright.stop()
     
     def _parse_html_item(self, item, source):
         """解析HTML新闻条目"""
@@ -273,19 +334,6 @@ class JuchaoCrawler:
                     "category": self._classify_global_event(title)
                 }
                 
-            elif source["name"] == "路透中文网":
-                title = item.select_one("a").get_text(strip=True)
-                time_str = item.select_one(".timestamp").get_text(strip=True)
-                url = "https://cn.reuters.com"  + item.select_one("a")["href"]
-                
-                return {
-                    "source": "路透中文网",
-                    "title": title,
-                    "time": self._parse_time(time_str),
-                    "url": url,
-                    "category": self._classify_global_event(title)
-                }
-                
             elif source["name"] == "BBC中文网":
                 title = item.select_one("h3").get_text(strip=True)
                 time_str = item.select_one(".media-list__date").get_text(strip=True)
@@ -293,6 +341,19 @@ class JuchaoCrawler:
                 
                 return {
                     "source": "BBC中文网",
+                    "title": title,
+                    "time": self._parse_time(time_str),
+                    "url": url,
+                    "category": self._classify_global_event(title)
+                }
+                
+            elif source["name"] == "财联社":
+                title = item.select_one(".news-title").get_text(strip=True)
+                time_str = item.select_one(".news-time").get_text(strip=True)
+                url = "https://www.cls.cn"  + item.select_one("a")["href"]
+                
+                return {
+                    "source": "财联社",
                     "title": title,
                     "time": self._parse_time(time_str),
                     "url": url,
